@@ -21,6 +21,14 @@ const int PADDLE_SPEED = 8;
 float leftPaddleY = (WINDOW_HEIGHT - PADDLE_HEIGHT) / 2.0f;
 float rightPaddleY = (WINDOW_HEIGHT - PADDLE_HEIGHT) / 2.0f;
 
+// Ball variables
+const int BALL_RADIUS = 6;
+const float SPEED_INCREASE_FACTOR = 1.05f; // 5% speed increase per hit
+float ballX = WINDOW_WIDTH / 2.0f;
+float ballY = WINDOW_HEIGHT / 2.0f;
+float ballVelocityX = -5.0f;
+float ballVelocityY = 3.0f;
+
 // Key state tracking
 bool wKeyPressed = false;
 bool sKeyPressed = false;
@@ -116,10 +124,51 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                     rightPaddleY += PADDLE_SPEED;
                 }
 
+                // Update ball position
+                ballX += ballVelocityX;
+                ballY += ballVelocityY;
+
+                // Ball collision with top and bottom
+                if (ballY - BALL_RADIUS <= 0 || ballY + BALL_RADIUS >= clientHeight) {
+                    ballVelocityY = -ballVelocityY;
+                    // Clamp ball to screen
+                    if (ballY - BALL_RADIUS < 0) {
+                        ballY = BALL_RADIUS;
+                    } else {
+                        ballY = clientHeight - BALL_RADIUS;
+                    }
+                }
+
+                // Ball collision with left paddle
+                if (ballX - BALL_RADIUS <= 30 && ballX + BALL_RADIUS >= 20 &&
+                    ballY >= leftPaddleY && ballY <= leftPaddleY + PADDLE_HEIGHT) {
+                    ballVelocityX = -ballVelocityX * SPEED_INCREASE_FACTOR;
+                    ballX = 30 + BALL_RADIUS;
+                    // Add some trajectory based on where the ball hit the paddle
+                    float hitPos = (ballY - leftPaddleY) / PADDLE_HEIGHT; // 0 to 1
+                    ballVelocityY += (hitPos - 0.5f) * 4.0f; // Add angle based on hit position
+                    ballVelocityY *= SPEED_INCREASE_FACTOR; // Increase Y velocity too
+                }
+
+                // Ball collision with right paddle
+                if (ballX + BALL_RADIUS >= clientWidth - 30 && ballX - BALL_RADIUS <= clientWidth - 20 &&
+                    ballY >= rightPaddleY && ballY <= rightPaddleY + PADDLE_HEIGHT) {
+                    ballVelocityX = -ballVelocityX * SPEED_INCREASE_FACTOR;
+                    ballX = clientWidth - 30 - BALL_RADIUS;
+                    // Add some trajectory based on where the ball hit the paddle
+                    float hitPos = (ballY - rightPaddleY) / PADDLE_HEIGHT; // 0 to 1
+                    ballVelocityY += (hitPos - 0.5f) * 4.0f; // Add angle based on hit position
+                    ballVelocityY *= SPEED_INCREASE_FACTOR; // Increase Y velocity too
+                }
+
                 // Draw paddles (vertical lines)
                 Pen paddlePen(Color(255, 255, 255, 255), PADDLE_WIDTH); // White color
                 graphics.DrawLine(&paddlePen, 20, (int)leftPaddleY, 20, (int)(leftPaddleY + PADDLE_HEIGHT));
                 graphics.DrawLine(&paddlePen, clientWidth - 20, (int)rightPaddleY, clientWidth - 20, (int)(rightPaddleY + PADDLE_HEIGHT));
+
+                // Draw ball
+                SolidBrush ballBrush(Color(255, 255, 255, 255)); // White ball
+                graphics.FillEllipse(&ballBrush, (int)(ballX - BALL_RADIUS), (int)(ballY - BALL_RADIUS), BALL_RADIUS * 2, BALL_RADIUS * 2);
             }
 
             // Copy from memory DC to screen (eliminates flickering)
