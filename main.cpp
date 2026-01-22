@@ -18,14 +18,21 @@ bool gameStarted = false;
 const int PADDLE_WIDTH = 10;
 const int PADDLE_HEIGHT = 100;
 const int PADDLE_SPEED = 8;
-float leftPaddleY = (WINDOW_HEIGHT - PADDLE_HEIGHT) / 2.0f;
-float rightPaddleY = (WINDOW_HEIGHT - PADDLE_HEIGHT) / 2.0f;
+
+// Game field dimensions
+const int FIELD_WIDTH = 800;
+const int FIELD_HEIGHT = 400;
+int fieldOffsetX = (WINDOW_WIDTH - FIELD_WIDTH) / 2;
+int fieldOffsetY = (WINDOW_HEIGHT - FIELD_HEIGHT) / 2;
+
+float leftPaddleY = (FIELD_HEIGHT - PADDLE_HEIGHT) / 2.0f;
+float rightPaddleY = (FIELD_HEIGHT - PADDLE_HEIGHT) / 2.0f;
 
 // Ball variables
 const int BALL_RADIUS = 6;
-const float SPEED_INCREASE_FACTOR = 1.05f; // 5% speed increase per hit
-float ballX = WINDOW_WIDTH / 2.0f;
-float ballY = WINDOW_HEIGHT / 2.0f;
+const float SPEED_INCREASE_FACTOR = 1.25f;
+float ballX = FIELD_WIDTH / 2.0f;
+float ballY = FIELD_HEIGHT / 2.0f;
 float ballVelocityX = -5.0f;
 float ballVelocityY = 3.0f;
 
@@ -110,17 +117,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 SolidBrush blackBrush(Color(255, 0, 0, 0));
                 graphics.FillRectangle(&blackBrush, 0, 0, clientWidth, clientHeight);
 
+                // Draw game field background
+                SolidBrush fieldBrush(Color(255, 20, 20, 20));
+                graphics.FillRectangle(&fieldBrush, fieldOffsetX, fieldOffsetY, FIELD_WIDTH, FIELD_HEIGHT);
+
                 // Update paddle positions
                 if (wKeyPressed && leftPaddleY > 0) {
                     leftPaddleY -= PADDLE_SPEED;
                 }
-                if (sKeyPressed && leftPaddleY < clientHeight - PADDLE_HEIGHT) {
+                if (sKeyPressed && leftPaddleY < FIELD_HEIGHT - PADDLE_HEIGHT) {
                     leftPaddleY += PADDLE_SPEED;
                 }
                 if (upKeyPressed && rightPaddleY > 0) {
                     rightPaddleY -= PADDLE_SPEED;
                 }
-                if (downKeyPressed && rightPaddleY < clientHeight - PADDLE_HEIGHT) {
+                if (downKeyPressed && rightPaddleY < FIELD_HEIGHT - PADDLE_HEIGHT) {
                     rightPaddleY += PADDLE_SPEED;
                 }
 
@@ -128,14 +139,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 ballX += ballVelocityX;
                 ballY += ballVelocityY;
 
-                // Ball collision with top and bottom
-                if (ballY - BALL_RADIUS <= 0 || ballY + BALL_RADIUS >= clientHeight) {
+                // Ball collision with top and bottom (field boundaries)
+                if (ballY - BALL_RADIUS <= 0 || ballY + BALL_RADIUS >= FIELD_HEIGHT) {
                     ballVelocityY = -ballVelocityY;
-                    // Clamp ball to screen
+                    // Clamp ball to field
                     if (ballY - BALL_RADIUS < 0) {
                         ballY = BALL_RADIUS;
                     } else {
-                        ballY = clientHeight - BALL_RADIUS;
+                        ballY = FIELD_HEIGHT - BALL_RADIUS;
                     }
                 }
 
@@ -151,24 +162,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 }
 
                 // Ball collision with right paddle
-                if (ballX + BALL_RADIUS >= clientWidth - 30 && ballX - BALL_RADIUS <= clientWidth - 20 &&
+                if (ballX + BALL_RADIUS >= FIELD_WIDTH - 30 && ballX - BALL_RADIUS <= FIELD_WIDTH - 20 &&
                     ballY >= rightPaddleY && ballY <= rightPaddleY + PADDLE_HEIGHT) {
                     ballVelocityX = -ballVelocityX * SPEED_INCREASE_FACTOR;
-                    ballX = clientWidth - 30 - BALL_RADIUS;
+                    ballX = FIELD_WIDTH - 30 - BALL_RADIUS;
                     // Add some trajectory based on where the ball hit the paddle
                     float hitPos = (ballY - rightPaddleY) / PADDLE_HEIGHT; // 0 to 1
                     ballVelocityY += (hitPos - 0.5f) * 4.0f; // Add angle based on hit position
                     ballVelocityY *= SPEED_INCREASE_FACTOR; // Increase Y velocity too
                 }
 
-                // Draw paddles (vertical lines)
+                // Draw paddles (vertical lines) - positioned relative to field
                 Pen paddlePen(Color(255, 255, 255, 255), PADDLE_WIDTH); // White color
-                graphics.DrawLine(&paddlePen, 20, (int)leftPaddleY, 20, (int)(leftPaddleY + PADDLE_HEIGHT));
-                graphics.DrawLine(&paddlePen, clientWidth - 20, (int)rightPaddleY, clientWidth - 20, (int)(rightPaddleY + PADDLE_HEIGHT));
+                graphics.DrawLine(&paddlePen, fieldOffsetX + 20, fieldOffsetY + (int)leftPaddleY, fieldOffsetX + 20, fieldOffsetY + (int)(leftPaddleY + PADDLE_HEIGHT));
+                graphics.DrawLine(&paddlePen, fieldOffsetX + FIELD_WIDTH - 20, fieldOffsetY + (int)rightPaddleY, fieldOffsetX + FIELD_WIDTH - 20, fieldOffsetY + (int)(rightPaddleY + PADDLE_HEIGHT));
 
-                // Draw ball
+                // Draw ball - positioned relative to field
                 SolidBrush ballBrush(Color(255, 255, 255, 255)); // White ball
-                graphics.FillEllipse(&ballBrush, (int)(ballX - BALL_RADIUS), (int)(ballY - BALL_RADIUS), BALL_RADIUS * 2, BALL_RADIUS * 2);
+                graphics.FillEllipse(&ballBrush, fieldOffsetX + (int)(ballX - BALL_RADIUS), fieldOffsetY + (int)(ballY - BALL_RADIUS), BALL_RADIUS * 2, BALL_RADIUS * 2);
             }
 
             // Copy from memory DC to screen (eliminates flickering)
