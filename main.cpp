@@ -9,7 +9,7 @@ using namespace Gdiplus;
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const char* WINDOW_CLASS_NAME = "GameWindow";
-const char* WINDOW_TITLE = "Game";
+const char* WINDOW_TITLE = "Ping Pong - Classic Arcade Revival";
 const wchar_t* BACKGROUND_IMAGE = L"assets/background-menu.png";
 
 ULONG_PTR gdiplusToken;
@@ -19,10 +19,17 @@ Image* backgroundImage = nullptr;
 enum GameState {
     MENU,
     DIFFICULTY_SELECT,
-    PLAYING
+    PLAYING,
+    PAUSED
 };
 GameState gameState = MENU;
 int selectedDifficulty = -1; // -1: none, 0: easy, 1: medium, 2: hard
+
+// Pause menu variables
+int pauseMenuSelection = 0; // 0: resume, 1: exit
+float countdownTimer = 0.0f; // 3 second countdown before resuming
+bool isCountingDown = false;
+float pauseAnimTime = 0.0f;
 
 // Game variables
 const int PADDLE_WIDTH = 10;
@@ -91,6 +98,37 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                     selectedDifficulty++;
                     selectionAnimTime = 0.0f;
                 }
+            } else if (wparam == 'P' || wparam == 'p') {
+                if (gameState == PLAYING) {
+                    gameState = PAUSED;
+                    pauseMenuSelection = 0; // Default to resume
+                    isCountingDown = false;
+                    countdownTimer = 0.0f;
+                    pauseAnimTime = 0.0f;
+                }
+            } else if (wparam == VK_LEFT && gameState == PAUSED && !isCountingDown) {
+                if (pauseMenuSelection > 0) {
+                    pauseMenuSelection--;
+                }
+            } else if (wparam == VK_RIGHT && gameState == PAUSED && !isCountingDown) {
+                if (pauseMenuSelection < 1) {
+                    pauseMenuSelection++;
+                }
+            } else if (wparam == VK_RETURN && gameState == PAUSED && !isCountingDown) {
+                if (pauseMenuSelection == 0) { // Resume
+                    isCountingDown = true;
+                    countdownTimer = 2.0f;
+                } else if (pauseMenuSelection == 1) { // Exit to menu
+                    gameState = MENU;
+                    selectedDifficulty = -1;
+                    leftScore = 0;
+                    rightScore = 0;
+                    hitCount = 0;
+                    ballX = WINDOW_WIDTH / 2.0f;
+                    ballY = WINDOW_HEIGHT / 2.0f;
+                    ballVelocityX = -5.0f;
+                    ballVelocityY = 3.0f;
+                }
             } else if (wparam == VK_RETURN && gameState == DIFFICULTY_SELECT) {
                 // Start game with selected difficulty
                 gameState = PLAYING;
@@ -110,10 +148,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                     currentSpeedFactor = 1.25f;
                     currentPaddleSpeed = PADDLE_SPEED;
                 } else if (selectedDifficulty == 1) { // Medium
-                    currentSpeedFactor = 1.75f;
+                    currentSpeedFactor = 1.45f;
                     currentPaddleSpeed = PADDLE_SPEED + 3;
                 } else if (selectedDifficulty == 2) { // Hard
-                    currentSpeedFactor = 2.10f;
+                    currentSpeedFactor = 1.70f;
                     currentPaddleSpeed = PADDLE_SPEED + 6;
                 }
             }
@@ -151,6 +189,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
             
             Graphics graphics(memDC);
             graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+
+            // Create shared font objects
+            FontFamily fontFamily(L"Arial");
+            StringFormat stringFormat;
+            stringFormat.SetAlignment(StringAlignmentCenter);
+            stringFormat.SetLineAlignment(StringAlignmentCenter);
 
             if (gameState == MENU) {
                 // Update animation time
@@ -218,11 +262,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 }
 
                 // Draw game title with glow effect
-                FontFamily fontFamily(L"Arial");
                 Font titleFont(&fontFamily, 96, FontStyleBold, UnitPixel);
-                StringFormat stringFormat;
-                stringFormat.SetAlignment(StringAlignmentCenter);
-                stringFormat.SetLineAlignment(StringAlignmentCenter);
 
                 // Title glow layers
                 for (int i = 3; i > 0; i--) {
@@ -330,14 +370,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 }
 
                 // Draw difficulty selection menu with enhanced styling
-                FontFamily fontFamily(L"Arial");
                 Font titleFont(&fontFamily, 64, FontStyleBold, UnitPixel);
                 Font optionFont(&fontFamily, 44, FontStyleBold, UnitPixel);
                 Font descFont(&fontFamily, 18, FontStyleRegular, UnitPixel);
                 SolidBrush titleBrush(Color(255, 255, 255, 255)); // White text
-                StringFormat stringFormat;
-                stringFormat.SetAlignment(StringAlignmentCenter);
-                stringFormat.SetLineAlignment(StringAlignmentCenter);
 
                 // Draw glowing title with shadow
                 SolidBrush shadowBrush(Color(150, 0, 0, 0));
@@ -482,6 +518,253 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 // Instruction text
                 RectF instructionRect(0, clientHeight - 50, clientWidth, 40);
                 graphics.DrawString(L"Navigate with ARROWS  •  Confirm with ENTER  •  ESC to Quit", -1, &instructionFont, instructionRect, &stringFormat, &instructionBrush);
+
+            } else if (gameState == PAUSED) {
+                // Update animation time
+                pauseAnimTime += 0.05f;
+
+                // Draw the game background (frozen state)
+                SolidBrush blackBrush(Color(255, 0, 0, 0));
+                graphics.FillRectangle(&blackBrush, 0, 0, clientWidth, clientHeight);
+
+                // Draw center line
+                Pen centerLinePen(Color(50, 255, 255, 255), 2);
+                for (int y = 0; y < clientHeight; y += 20) {
+                    graphics.DrawLine(&centerLinePen, clientWidth / 2, y, clientWidth / 2, y + 10);
+                }
+
+                // Draw paddles (dimmed)
+                SolidBrush paddleBrush(Color(100, 255, 255, 255));
+                graphics.FillRectangle(&paddleBrush, 15, (int)leftPaddleY, PADDLE_WIDTH, PADDLE_HEIGHT);
+                graphics.FillRectangle(&paddleBrush, clientWidth - 15 - PADDLE_WIDTH, (int)rightPaddleY, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+                // Draw ball (dimmed with glow)
+                SolidBrush ballGlowBrush(Color(50, 255, 255, 255));
+                graphics.FillEllipse(&ballGlowBrush, (int)(ballX - BALL_RADIUS - 2), (int)(ballY - BALL_RADIUS - 2), (BALL_RADIUS + 2) * 2, (BALL_RADIUS + 2) * 2);
+                
+                SolidBrush ballBrush(Color(100, 255, 255, 255));
+                graphics.FillEllipse(&ballBrush, (int)(ballX - BALL_RADIUS), (int)(ballY - BALL_RADIUS), BALL_RADIUS * 2, BALL_RADIUS * 2);
+
+                // Draw scores (dimmed)
+                Font scoreFont(&fontFamily, 48, FontStyleBold, UnitPixel);
+                SolidBrush scoreBrush(Color(100, 255, 255, 255));
+
+                std::wstring leftScoreStr = IntToWString(leftScore);
+                RectF leftScoreRect(0, 30, clientWidth / 2 - 50, 80);
+                graphics.DrawString(leftScoreStr.c_str(), -1, &scoreFont, leftScoreRect, &stringFormat, &scoreBrush);
+
+                std::wstring rightScoreStr = IntToWString(rightScore);
+                RectF rightScoreRect(clientWidth / 2 + 50, 30, clientWidth / 2 - 50, 80);
+                graphics.DrawString(rightScoreStr.c_str(), -1, &scoreFont, rightScoreRect, &stringFormat, &scoreBrush);
+
+                // Draw enhanced semi-transparent overlay with gradient
+                LinearGradientBrush overlayGradient(
+                    Point(0, 0),
+                    Point(0, clientHeight),
+                    Color(220, 0, 0, 20),
+                    Color(220, 20, 0, 40)
+                );
+                graphics.FillRectangle(&overlayGradient, 0, 0, clientWidth, clientHeight);
+
+                // Draw animated particles in pause screen
+                SolidBrush particleBrush(Color(80, 100, 200, 255));
+                for (int i = 0; i < 20; i++) {
+                    float angle = pauseAnimTime * 0.5f + (i * 3.14159f * 2.0f / 20.0f);
+                    float radius = 150 + sin(pauseAnimTime + i) * 30;
+                    float x = clientWidth / 2 + cos(angle) * radius;
+                    float y = clientHeight / 2 + sin(angle) * radius;
+                    int size = 2 + (int)(sin(pauseAnimTime * 2 + i) * 1.5f);
+                    graphics.FillEllipse(&particleBrush, (int)x - size, (int)y - size, size * 2, size * 2);
+                }
+
+                // Draw decorative frame around pause menu
+                int frameMargin = 80;
+                int frameWidth = 600;
+                int frameHeight = 500;
+                int frameX = (clientWidth - frameWidth) / 2;
+                int frameY = (clientHeight - frameHeight) / 2;
+
+                // Outer glow layers
+                for (int i = 4; i > 0; i--) {
+                    int alpha = 40 - i * 8;
+                    int offset = i * 4;
+                    Pen glowPen(Color(alpha, 100, 200, 255), 3);
+                    graphics.DrawRectangle(&glowPen, frameX - offset, frameY - offset, frameWidth + offset * 2, frameHeight + offset * 2);
+                }
+
+                // Main frame
+                SolidBrush frameBrush(Color(180, 10, 10, 30));
+                graphics.FillRectangle(&frameBrush, frameX, frameY, frameWidth, frameHeight);
+                
+                Pen framePen(Color(255, 100, 200, 255), 4);
+                graphics.DrawRectangle(&framePen, frameX, frameY, frameWidth, frameHeight);
+
+                // Draw corner accents
+                int accentSize = 30;
+                Pen accentPen(Color(255, 255, 255, 100), 6);
+                
+                // Top-left corner
+                graphics.DrawLine(&accentPen, frameX, frameY, frameX + accentSize, frameY);
+                graphics.DrawLine(&accentPen, frameX, frameY, frameX, frameY + accentSize);
+                
+                // Top-right corner
+                graphics.DrawLine(&accentPen, frameX + frameWidth, frameY, frameX + frameWidth - accentSize, frameY);
+                graphics.DrawLine(&accentPen, frameX + frameWidth, frameY, frameX + frameWidth, frameY + accentSize);
+                
+                // Bottom-left corner
+                graphics.DrawLine(&accentPen, frameX, frameY + frameHeight, frameX + accentSize, frameY + frameHeight);
+                graphics.DrawLine(&accentPen, frameX, frameY + frameHeight, frameX, frameY + frameHeight - accentSize);
+                
+                // Bottom-right corner
+                graphics.DrawLine(&accentPen, frameX + frameWidth, frameY + frameHeight, frameX + frameWidth - accentSize, frameY + frameHeight);
+                graphics.DrawLine(&accentPen, frameX + frameWidth, frameY + frameHeight, frameX + frameWidth, frameY + frameHeight - accentSize);
+
+                // Draw pause title with glow and pulsing effect
+                Font pauseTitleFont(&fontFamily, 80, FontStyleBold, UnitPixel);
+                float titlePulse = 0.9f + sin(pauseAnimTime * 3.0f) * 0.1f;
+                
+                // Multiple glow layers for title
+                for (int i = 5; i > 0; i--) {
+                    int alpha = (int)((60 - i * 10) * titlePulse);
+                    SolidBrush glowBrush(Color(alpha, 255, 100, 100));
+                    RectF glowRect(frameX - i * 3, frameY + 40 - i * 2, frameWidth + i * 6, 100);
+                    graphics.DrawString(L"⏸ PAUSED", -1, &pauseTitleFont, glowRect, &stringFormat, &glowBrush);
+                }
+                
+                // Main title with gradient
+                RectF pauseTitleRect(frameX, frameY + 40, frameWidth, 100);
+                LinearGradientBrush titleGradient(
+                    Point(frameX + frameWidth / 2, frameY + 40),
+                    Point(frameX + frameWidth / 2, frameY + 140),
+                    Color((int)(255 * titlePulse), 255, 150, 150),
+                    Color((int)(255 * titlePulse), 255, 100, 100)
+                );
+                graphics.DrawString(L"⏸ PAUSED", -1, &pauseTitleFont, pauseTitleRect, &stringFormat, &titleGradient);
+
+                // Draw decorative line under title
+                Pen dividerPen(Color(200, 100, 200, 255), 2);
+                int dividerY = frameY + 160;
+                graphics.DrawLine(&dividerPen, frameX + 50, dividerY, frameX + frameWidth - 50, dividerY);
+
+                if (isCountingDown) {
+                    // Update countdown timer
+                    countdownTimer -= 0.016f; // Decrease by ~60FPS
+                    if (countdownTimer <= 0.0f) {
+                        countdownTimer = 0.0f;
+                        gameState = PLAYING;
+                        isCountingDown = false;
+                    }
+
+                    // Draw countdown with elaborate effects
+                    int countdown = (int)countdownTimer + 1;
+                    if (countdown > 3) countdown = 3;
+                    
+                    Font countdownFont(&fontFamily, 180, FontStyleBold, UnitPixel);
+                    std::wstring countdownStr = IntToWString(countdown);
+                    
+                    // Countdown animation effects
+                    float countdownScale = 1.0f + (1.0f - (countdownTimer - (int)countdownTimer)) * 0.3f;
+                    int countdownAlpha = (int)(255 * (0.3f + (countdownTimer - (int)countdownTimer) * 0.7f));
+                    
+                    // Outer glow rings
+                    for (int ring = 5; ring > 0; ring--) {
+                        int ringAlpha = (int)((100 - ring * 15) * (countdownTimer - (int)countdownTimer));
+                        SolidBrush ringBrush(Color(ringAlpha, 100, 255, 100));
+                        RectF ringRect(frameX - ring * 5, frameY + 200 - ring * 5, frameWidth + ring * 10, 200);
+                        graphics.DrawString(countdownStr.c_str(), -1, &countdownFont, ringRect, &stringFormat, &ringBrush);
+                    }
+                    
+                    // Main countdown number with gradient
+                    RectF countdownRect(frameX, frameY + 200, frameWidth, 200);
+                    LinearGradientBrush countdownGradient(
+                        Point(frameX + frameWidth / 2, frameY + 200),
+                        Point(frameX + frameWidth / 2, frameY + 400),
+                        Color(countdownAlpha, 100, 255, 255),
+                        Color(countdownAlpha, 100, 255, 100)
+                    );
+                    graphics.DrawString(countdownStr.c_str(), -1, &countdownFont, countdownRect, &stringFormat, &countdownGradient);
+
+                    // Draw "Resuming..." text
+                    Font resumingFont(&fontFamily, 28, FontStyleItalic, UnitPixel);
+                    SolidBrush resumingBrush(Color(200, 200, 200, 200));
+                    RectF resumingRect(frameX, frameY + 420, frameWidth, 40);
+                    graphics.DrawString(L"Resuming game...", -1, &resumingFont, resumingRect, &stringFormat, &resumingBrush);
+
+                } else {
+                    // Draw menu options with cards
+                    int optionY = frameY + 220;
+                    int optionWidth = 400;
+                    int optionHeight = 90;
+                    int optionX = frameX + (frameWidth - optionWidth) / 2;
+                    int optionSpacing = 120;
+
+                    const wchar_t* optionTexts[] = {L"▶ RESUME", L"🏠 MAIN MENU"};
+                    Color optionColors[] = {
+                        Color(255, 100, 255, 100),  // Green for Resume
+                        Color(255, 255, 100, 100)   // Red for Menu
+                    };
+
+                    for (int i = 0; i < 2; i++) {
+                        int currentY = optionY + i * optionSpacing;
+                        bool isSelected = (pauseMenuSelection == i);
+                        
+                        // Calculate pulse effect
+                        float pulse = isSelected ? (0.85f + sin(pauseAnimTime * 5.0f) * 0.15f) : 0.4f;
+                        
+                        // Draw option glow
+                        if (isSelected) {
+                            for (int glow = 3; glow > 0; glow--) {
+                                int glowAlpha = (int)((60 - glow * 15) * pulse);
+                                SolidBrush glowBrush(Color(glowAlpha, optionColors[i].GetR(), optionColors[i].GetG(), optionColors[i].GetB()));
+                                graphics.FillRectangle(&glowBrush, 
+                                    optionX - glow * 4, 
+                                    currentY - glow * 4, 
+                                    optionWidth + glow * 8, 
+                                    optionHeight + glow * 8);
+                            }
+                        }
+                        
+                        // Draw option background
+                        SolidBrush optionBrush(Color((int)(150 * pulse), 20, 20, 50));
+                        graphics.FillRectangle(&optionBrush, optionX, currentY, optionWidth, optionHeight);
+                        
+                        // Draw option border
+                        Pen optionPen(Color((int)(255 * pulse), optionColors[i].GetR(), optionColors[i].GetG(), optionColors[i].GetB()), 
+                                     isSelected ? 5 : 2);
+                        graphics.DrawRectangle(&optionPen, optionX, currentY, optionWidth, optionHeight);
+                        
+                        // Draw selection indicator (animated arrow)
+                        if (isSelected) {
+                            SolidBrush arrowBrush(Color(255, 255, 255, 200));
+                            float arrowOffset = sin(pauseAnimTime * 6.0f) * 8;
+                            
+                            Point arrowPoints[3];
+                            arrowPoints[0] = Point((int)(optionX - 25 + arrowOffset), currentY + optionHeight / 2);
+                            arrowPoints[1] = Point((int)(optionX - 40 + arrowOffset), currentY + optionHeight / 2 - 12);
+                            arrowPoints[2] = Point((int)(optionX - 40 + arrowOffset), currentY + optionHeight / 2 + 12);
+                            graphics.FillPolygon(&arrowBrush, arrowPoints, 3);
+                        }
+                        
+                        // Draw option text
+                        Font optionFont(&fontFamily, 40, FontStyleBold, UnitPixel);
+                        SolidBrush textBrush(Color((int)(255 * pulse), 255, 255, 255));
+                        RectF textRect(optionX, currentY, optionWidth, optionHeight);
+                        graphics.DrawString(optionTexts[i], -1, &optionFont, textRect, &stringFormat, &textBrush);
+                    }
+
+                    // Draw instructions at bottom with enhanced styling
+                    Font instructionFont(&fontFamily, 20, FontStyleRegular, UnitPixel);
+                    SolidBrush instructionBrush(Color(180, 200, 200, 200));
+                    RectF instructionRect(frameX, frameY + frameHeight - 60, frameWidth, 40);
+                    graphics.DrawString(L"Use ← → to navigate  •  Press ENTER to select  •  P to resume", 
+                                      -1, &instructionFont, instructionRect, &stringFormat, &instructionBrush);
+
+                    // Draw tip text
+                    Font tipFont(&fontFamily, 16, FontStyleItalic, UnitPixel);
+                    SolidBrush tipBrush(Color(150, 150, 150, 150));
+                    RectF tipRect(frameX, frameY + frameHeight - 30, frameWidth, 25);
+                    graphics.DrawString(L"💡 Take a break, champion!", -1, &tipFont, tipRect, &stringFormat, &tipBrush);
+                }
 
             } else {
                 // Game is playing - black background only
@@ -638,12 +921,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
                 graphics.FillEllipse(&ballBrush, (int)(ballX - BALL_RADIUS), (int)(ballY - BALL_RADIUS), BALL_RADIUS * 2, BALL_RADIUS * 2);
 
                 // Draw scores
-                FontFamily fontFamily(L"Arial");
                 Font scoreFont(&fontFamily, 48, FontStyleBold, UnitPixel);
                 SolidBrush scoreBrush(Color(255, 255, 255, 255));
-                StringFormat stringFormat;
-                stringFormat.SetAlignment(StringAlignmentCenter);
-                stringFormat.SetLineAlignment(StringAlignmentCenter);
 
                 // Left player score
                 std::wstring leftScoreStr = IntToWString(leftScore);
